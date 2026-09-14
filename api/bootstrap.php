@@ -7,33 +7,27 @@
  * This file is included first by every endpoint in this folder.
  */
 
-// ---- CORS (needed because the Flutter app calls this API from a different origin) ----
-header('Access-Control-Allow-Origin: *');
+require_once __DIR__ . '/../includes/config.php';
+
+// Allow only the configured app origin. Native clients may omit Origin entirely.
+$allowed_origin = getenv('CORS_ORIGIN') ?: SITE_BASE_URL;
+if (!empty($_SERVER['HTTP_ORIGIN']) && $allowed_origin !== '' && hash_equals($allowed_origin, $_SERVER['HTTP_ORIGIN'])) {
+    header('Access-Control-Allow-Origin: ' . $allowed_origin);
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
+header('Cache-Control: no-store');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
-// ---- DB connection (same credentials/schema as the original website) ----
-$host = 'localhost';
-$dbname = 'stationery';
-$username = 'root';
-$password = '1234';
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    json_error('Database connection failed', 500);
-}
-
-// ---- Secret used to sign stateless auth tokens (change this in production!) ----
-define('API_SECRET', 'decomat-stationers-2026-change-me');
+require_once __DIR__ . '/../includes/db.php';
+if (API_SECRET === '') json_error('Service configuration error.', 503);
 
 /**
  * Send a JSON success response and stop execution.
@@ -70,9 +64,15 @@ function get_body() {
  * No DB storage needed, verified again on every request.
  */
 function generate_token($customer_id) {
-    $payload = base64_encode((string)$customer_id);
+    $payload = base64url_encode(json_encode(['id' => (int)$customer_id, 'exp' => time() + 604800]));
     $sig = hash_hmac('sha256', $payload, API_SECRET);
     return $payload . '.' . $sig;
+}
+function base64url_encode($value) { return rtrim(strtr(base64_encode($value), '+/', '-_'), '='); }
+function base64url_decode($value) {
+    $remainder = strlen($value) % 4;
+    if ($remainder) $value .= str_repeat('=', 4 - $remainder);
+    return base64_decode(strtr($value, '-_', '+/'), true);
 }
 
 /**
@@ -103,11 +103,12 @@ function get_auth_customer_id() {
     if (!hash_equals($expected, $sig)) {
         return null;
     }
-    $id = base64_decode($payload);
-    if (!ctype_digit($id)) {
+    $decoded = base64url_decode($payload);
+    $claims = json_decode($decoded ?: '', true);
+    if (!is_array($claims) || !isset($claims['id'], $claims['exp']) || !is_numeric($claims['id']) || (int)$claims['exp'] < time()) {
         return null;
     }
-    return (int)$id;
+    return (int)$claims['id'];
 }
 
 /**
@@ -128,7 +129,7 @@ function require_auth() {
  * real production domain served over HTTPS, e.g.
  * 'https://decomatstationers.com'.
  */
-define('SITE_BASE_URL', 'http://10.0.2.2/stationery');
+if (SITE_BASE_URL === '') json_error('Service configuration error.', 503);
 
 function image_url($folder, $filename) {
     if (empty($filename)) return null;

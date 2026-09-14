@@ -1,6 +1,7 @@
 <?php
 // admin/login.php
-session_start();
+require_once '../includes/config.php';
+app_start_session();
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
 
@@ -12,7 +13,8 @@ if (is_admin_logged_in()) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = sanitize_input($_POST['email']);
+    require_csrf();
+    $email = sanitize_input($_POST['email'] ?? '');
     $password = $_POST['password'];
 
     if (empty($email) || empty($password)) {
@@ -23,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $admin = $stmt->fetch();
 
         if ($admin && password_verify($password, $admin['password'])) {
+            session_regenerate_id(true);
             $_SESSION['admin_id'] = $admin['id'];
             $_SESSION['admin_name'] = $admin['name'];
             redirect('dashboard.php');
@@ -64,6 +67,7 @@ $current_page = 'login.php';
       <?php endif; ?>
 
       <form action="login.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
         <div class="input-group mb-3">
           <input type="text" name="email" class="form-control" placeholder="Username" required>
           <div class="input-group-append">

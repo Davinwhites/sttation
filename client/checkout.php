@@ -33,8 +33,12 @@ $error = '';
 $success = false;
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $payment_method = $_POST['payment_method'];
-    $pickup_date = $_POST['pickup_date'];
+    require_csrf();
+    $payment_method = $_POST['payment_method'] ?? '';
+    $pickup_date = $_POST['pickup_date'] ?? '';
+    if (!in_array($payment_method, ['Pickup', 'Online'], true) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $pickup_date) || $pickup_date < date('Y-m-d')) {
+        $error = 'Please choose a valid payment method and pickup date.';
+    }
     
     // Generate Order Number
     $order_number = 'ORD-' . date('Ymd') . '-' . rand(1000, 9999);
@@ -44,12 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     if ($payment_method == 'Online') {
         if (isset($_FILES['proof_image']) && $_FILES['proof_image']['error'] == 0) {
-            $allowed = ['jpg', 'jpeg', 'png'];
-            $filename = $_FILES['proof_image']['name'];
-            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-            if (in_array($ext, $allowed)) {
-                $proof_image = time() . '_' . rand(1000,9999) . '.' . $ext;
-                move_uploaded_file($_FILES['proof_image']['tmp_name'], '../assets/images/payments/' . $proof_image);
+            $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+            $mime = (new finfo(FILEINFO_MIME_TYPE))->file($_FILES['proof_image']['tmp_name']);
+            if ($_FILES['proof_image']['size'] > 5 * 1024 * 1024) {
+                $error = 'Payment proof must be 5 MB or smaller.';
+            } elseif (isset($allowed[$mime])) {
+                $proof_image = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+                if (!move_uploaded_file($_FILES['proof_image']['tmp_name'], __DIR__ . '/../assets/images/payments/' . $proof_image)) $error = 'Unable to save payment proof.';
             } else {
                 $error = "Invalid proof image format. Only JPG, PNG are allowed.";
             }
@@ -119,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <?php endif; ?>
             
             <form action="checkout.php" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="row">
                     <!-- Order Details -->
                     <div class="col-md-7 mb-4">

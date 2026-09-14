@@ -1,5 +1,19 @@
 <?php
-if (!defined('BASE_URL')) { define('BASE_URL', '/stationery'); }
+require_once __DIR__ . '/config.php';
+if (!defined('BASE_URL') || BASE_URL === '') { define('BASE_URL', '/stationery'); }
+
+function csrf_token() {
+    app_start_session();
+    if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    return $_SESSION['csrf_token'];
+}
+function verify_csrf($token) {
+    app_start_session();
+    return is_string($token) && !empty($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+function require_csrf() {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) { http_response_code(419); exit('Your form expired. Please try again.'); }
+}
 
 // includes/functions.php
 

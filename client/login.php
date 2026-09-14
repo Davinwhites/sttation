@@ -9,7 +9,8 @@ if (is_customer_logged_in()) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = sanitize_input($_POST['email']);
+    require_csrf();
+    $email = sanitize_input($_POST['email'] ?? '');
     $password = $_POST['password'];
 
     if (empty($email) || empty($password)) {
@@ -20,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $customer = $stmt->fetch();
 
         if ($customer && password_verify($password, $customer['password'])) {
+            session_regenerate_id(true);
             $_SESSION['customer_id'] = $customer['id'];
             $_SESSION['customer_name'] = $customer['fullname'];
             
@@ -51,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php endif; ?>
                 
                 <form action="login.php" method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label>Email Address</label>
                         <input type="email" name="email" class="form-control" required>

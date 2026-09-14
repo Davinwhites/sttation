@@ -11,7 +11,8 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $fullname = sanitize_input($_POST['fullname']);
+    require_csrf();
+    $fullname = sanitize_input($_POST['fullname'] ?? '');
     $email = sanitize_input($_POST['email']);
     $phone = sanitize_input($_POST['phone']);
     $password = $_POST['password'];
@@ -20,6 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if (empty($fullname) || empty($email) || empty($phone) || empty($password)) {
         $error = "All required fields must be filled.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($fullname) > 120 || strlen($phone) > 30) {
+        $error = "Please enter valid account details.";
+    } elseif (strlen($password) < 8) {
+        $error = "Password must be at least 8 characters.";
     } elseif ($password !== $confirm_password) {
         $error = "Passwords do not match.";
     } else {
@@ -57,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php else: ?>
                 
                 <form action="register.php" method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label>Full Name <span class="text-danger">*</span></label>
                         <input type="text" name="fullname" class="form-control" required>
