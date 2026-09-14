@@ -26,8 +26,9 @@ $pickup_date = $_POST['pickup_date'] ?? '';
 if (!in_array($payment_method, ['Online', 'Pickup'], true)) {
     json_error('Please choose a valid payment method.');
 }
-if ($pickup_date === '') {
-    json_error('Please select a pickup date.');
+$date = DateTime::createFromFormat('Y-m-d', $pickup_date);
+if (!$date || $date->format('Y-m-d') !== $pickup_date || $pickup_date < date('Y-m-d')) {
+    json_error('Please select a valid future pickup date.');
 }
 
 // Verify stock is still available
@@ -89,8 +90,11 @@ try {
         $item_stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, price, quantity) VALUES (?, ?, ?, ?)");
         $item_stmt->execute([$order_id, $item['product_id'], $item['retail_price'], $item['quantity']]);
 
-        $stock_stmt = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
-        $stock_stmt->execute([$item['quantity'], $item['product_id']]);
+        $stock_stmt = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+        $stock_stmt->execute([$item['quantity'], $item['product_id'], $item['quantity']]);
+        if ($stock_stmt->rowCount() !== 1) {
+            throw new RuntimeException('Stock changed while placing order.');
+        }
     }
 
     if ($payment_method === 'Online' && $proof_image) {
